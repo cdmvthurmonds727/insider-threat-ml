@@ -1,0 +1,15 @@
+flowchart LR
+    User[Cloud User / IAM Principal] --> AWS[AWS Account]
+    AWS --> CT[CloudTrail Logs]
+    AWS --> GD[GuardDuty Findings]
+    AWS --> IAM[IAM Activity]
+    AWS --> EC2[EC2 Activity]
+    CT --> S3[S3 Log Bucket]
+    GD --> S3
+    IAM --> S3
+    EC2 --> S3
+    S3 --> Parser[parse_cloudtrail.py]
+    Parser --> Features[feature_engineer_cloudtrail.py]
+    Features --> Model[Isolation Forest Model]
+    Model --> Results[Scored Events + Anomaly CSV]
+    Results --> Analyst[Security Analyst Review]

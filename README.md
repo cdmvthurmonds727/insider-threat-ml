@@ -1,111 +1,65 @@
-# Behavioral AI for Insider Threat Detection in AWS Cloud Systems
+#!/usr/bin/env python3
+"""Train Isolation Forest on engineered features and export scored results."""
 
-This project is a GitHub-ready proof of concept for detecting potential insider threat behavior using AWS activity logs and machine learning. It supports synthetic sample data for demonstration and can be adapted to AWS CloudTrail logs exported from S3.
+from __future__ import annotations
 
-Furthermore, “This project demonstrates cloud-native insider threat detection using AWS telemetry and an Isolation Forest ML model deployed in a reproducible pipeline.”
-
-## Project Goals
-
-- Parse AWS CloudTrail-style activity logs.
-- Engineer behavioral features from cloud events.
-- Train an Isolation Forest anomaly detection model.
-- Score events and rank anomalies by severity.
-- Export results, figures, and CSV files for reports or presentations.
-
-## Repository Structure
-
-```text
-.
-├── scripts/
-│   ├── parse_cloudtrail.py
-│   ├── feature_engineer_cloudtrail.py
-│   ├── train_iforest.py
-│   ├── train_iforest_real.py
-│   └── insider_threat_poc.py
-├── data/
-│   └── sample/
-│       └── sample_events.csv
-├── outputs/
-│   └── .gitkeep
-├── models/
-│   └── .gitkeep
-├── docs/
-│   ├── Appendix_Descriptions.md
-│   └── references_apa.md
-├── diagrams/
-│   └── aws_architecture.mmd
-├── requirements.txt
-├── .gitignore
-└── LICENSE
-```
-
-![Python](https://img.shields.io/badge/python-3.10-blue)
-![AWS](https://img.shields.io/badge/AWS-Cloud-orange)
-![ML](https://img.shields.io/badge/MachineLearning-IsolationForest-green)
+import argparse
+from pathlib import Path
+import joblib
+import pandas as pd
+from sklearn.ensemble import IsolationForest
 
 
-## Quick Start
+def severity_score(row: pd.Series) -> int:
+    score = 0
+    score += int(min(row.get("api_call_count", 0), 40) * 1.2)
+    score += int(row.get("failed_login_count", 0) * 8)
+    score += int(row.get("privileged_action_count", 0) * 12)
+    score += int(row.get("iam_change_count", 0) * 15)
+    score += int(row.get("off_hours", 0) * 10)
+    score += int(row.get("unique_source_ips", 0) * 4)
+    return min(score, 100)
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python scripts/insider_threat_poc.py
-```
 
-Results are written to the `outputs/` folder.
+def severity_label(score: int) -> str:
+    if score >= 80:
+        return "Critical"
+    if score >= 60:
+        return "High"
+    if score >= 35:
+        return "Medium"
+    return "Low"
 
-## Run the Full Pipeline
 
-### 1. Parse CloudTrail JSON
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Train and score Isolation Forest model.")
+    parser.add_argument("--input", required=True, help="Feature CSV.")
+    parser.add_argument("--output", required=True, help="Scored CSV output.")
+    parser.add_argument("--model", default="models/isolation_forest.joblib", help="Model output path.")
+    parser.add_argument("--contamination", type=float, default=0.08, help="Expected anomaly ratio.")
+    args = parser.parse_args()
 
-```bash
-python scripts/parse_cloudtrail.py --input data/cloudtrail.json --output outputs/parsed_cloudtrail.csv
-```
+    df = pd.read_csv(args.input)
+    drop_cols = ["event_time", "user", "username", "source", "eventName"]
+    features = df.drop(columns=[c for c in drop_cols if c in df.columns], errors="ignore")
+    features = features.select_dtypes(include=["int64", "float64", "int32", "float32"])
 
-### 2. Engineer Features
+    model = IsolationForest(n_estimators=150, contamination=args.contamination, random_state=42)
+    model.fit(features)
 
-```bash
-python scripts/feature_engineer_cloudtrail.py --input outputs/parsed_cloudtrail.csv --output outputs/features.csv
-```
+    df["prediction"] = model.predict(features)
+    df["predicted_threat"] = (df["prediction"] == -1).astype(int)
+    df["anomaly_score"] = -model.decision_function(features)
+    df["severity_score"] = df.apply(severity_score, axis=1)
+    df["severity"] = df["severity_score"].apply(severity_label)
 
-### 3. Train and Score with Isolation Forest
+    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+    Path(args.model).parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(args.output, index=False)
+    joblib.dump(model, args.model)
+    print(f"Saved scored results to {args.output}")
+    print(f"Saved model to {args.model}")
 
-```bash
-python scripts/train_iforest.py --input outputs/features.csv --output outputs/scored.csv --model models/isolation_forest.joblib
-```
 
-### 4. Run End-to-End Demo
-
-```bash
-python scripts/insider_threat_poc.py
-```
-
-## Severity Scoring
-
-The project includes a simple severity score to help prioritize anomalies:
-
-- Higher anomaly score = more suspicious behavior.
-- Off-hours activity adds risk.
-- Failed login activity adds risk.
-- Privileged or sensitive API activity adds risk.
-- High activity volume adds risk.
-
-Severity labels:
-
-- Low
-- Medium
-- High
-- Critical
-
-## Example Use Case
-
-A security analyst can use this project to identify unusual IAM, EC2, S3, or CloudTrail activity patterns that may indicate compromised credentials, privilege misuse, or insider threat behavior.
-
-## Academic Context
-
-This project was designed for an independent study / final paper on Behavioral AI for Insider Threat Detection in DoD or AWS cloud systems. It can support appendices, screenshots, architecture diagrams, and model output tables in APA or IEEE reports.
-
-## Disclaimer
-
-This is an educational proof of concept. It is not a production security monitoring platform. For production environments, integrate with AWS CloudTrail, GuardDuty, Security Hub, SIEM tooling, least-privilege IAM, alerting, and incident response workflows.
+if __name__ == "__main__":
+    main()
