@@ -2,6 +2,8 @@
 
 This project is a GitHub-ready proof of concept for detecting potential insider threat behavior using AWS activity logs and machine learning. It supports synthetic sample data for demonstration and can be adapted to AWS CloudTrail logs exported from S3.
 
+Furthermore, “This project demonstrates cloud-native insider threat detection using AWS telemetry and an Isolation Forest ML model deployed in a reproducible pipeline.”
+
 ## Project Goals
 
 - Parse AWS CloudTrail-style activity logs.
@@ -36,6 +38,11 @@ This project is a GitHub-ready proof of concept for detecting potential insider 
 ├── .gitignore
 └── LICENSE
 ```
+
+![Python](https://img.shields.io/badge/python-3.10-blue)
+![AWS](https://img.shields.io/badge/AWS-Cloud-orange)
+![ML](https://img.shields.io/badge/MachineLearning-IsolationForest-green)
+
 
 ## Quick Start
 
